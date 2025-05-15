@@ -1,0 +1,23 @@
+{
+  "name": "@lucianovandi/simplex-bus",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "src/"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LucianoVandi/simplex-bus.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/LucianoVandi/simplex-bus/issues"
+  },
+  "homepage": "https://github.com/LucianoVandi/simplex-bus#readme"
+}

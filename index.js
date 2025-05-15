@@ -1,0 +1,1 @@
+export { createCommandBus } from './src/createCommandBus.js';

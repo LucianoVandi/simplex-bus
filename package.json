@@ -1,23 +1,44 @@
 {
   "name": "@lucianovandi/simplex-bus",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "A transport-agnostic command bus for safe cross-context messaging.",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "types": "./index.d.ts",
   "files": [
     "index.js",
+    "index.d.ts",
     "src/"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test",
+    "coverage": "node --test --experimental-test-coverage",
+    "check:coverage": "node scripts/check-coverage.mjs",
+    "lint": "node --check index.js src/*.js test/*.js scripts/*.mjs",
+    "check": "npm run lint && npm run test && npm run check:coverage"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/LucianoVandi/simplex-bus.git"
   },
-  "author": "",
+  "keywords": [
+    "command-bus",
+    "message-bus",
+    "webview",
+    "iframe",
+    "postmessage",
+    "rpc"
+  ],
+  "author": "Luciano Vandi",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/LucianoVandi/simplex-bus/issues"
   },
-  "homepage": "https://github.com/LucianoVandi/simplex-bus#readme"
+  "homepage": "https://github.com/LucianoVandi/simplex-bus#readme",
+  "engines": {
+    "node": ">=20"
+  }
 }

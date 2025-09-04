@@ -99,6 +99,65 @@ This repository includes:
 - Code of Conduct (`CODE_OF_CONDUCT.md`)
 - Changelog (`CHANGELOG.md`)
 
+## Examples
+
+- WebView bridge example: `examples/webview-bridge.js`
+- iframe bridge example: `examples/iframe-bridge.js`
+
+## Architecture Notes
+
+### Core Principles
+
+- Transport-agnostic by design: transport is provided through `sendFn` and `onReceive`.
+- Request/response correlation based on generated IDs and deterministic response type suffix.
+- Failures are explicit through typed error classes.
+- Lifecycle is explicit and reversible (`on`, `once`, `off`, `dispose`).
+
+### Message Model
+
+Envelope fields:
+- `type` required command/event name
+- `payload` optional data
+- `id` optional correlation ID used by requests
+- `isError` optional response flag for remote failures
+
+### Safety Model
+
+- Input shape validation at receive boundary.
+- Payload validation per message type.
+- Pending requests are cleaned up on timeout, abort, or dispose.
+- Parser/serializer failures are wrapped in domain errors.
+
+### Tradeoffs
+
+- Runtime validation is intentionally lightweight and dependency-free.
+- Response type convention (`<type>-response`) is simple and predictable.
+- Handlers are sync-first for simplicity; async usage is supported at transport level.
+
+## Release Checklist
+
+### Before Release
+
+- Run `npm run check` and ensure all gates pass.
+- Verify `CHANGELOG.md` has an entry for the release.
+- Verify README examples still match the public API.
+- Verify package contents with `npm run pack:check`.
+
+### Versioning
+
+- Bump version in `package.json`.
+- Tag release with `v<version>`.
+
+### Publish
+
+- Publish package from clean `main` branch.
+- Create GitHub release notes from changelog.
+
+### After Release
+
+- Smoke test install from a fresh project.
+- Open follow-up issues for deferred improvements.
+
 ## License
 
 MIT.

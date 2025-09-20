@@ -2,6 +2,7 @@ import {
   CommandBusAbortedError,
   CommandBusDisposedError,
   CommandBusInvalidMessageError,
+  CommandBusLimitError,
   CommandBusRemoteError,
   CommandBusSerializationError,
   CommandBusTimeoutError,
@@ -13,6 +14,8 @@ const NOOP_LOGGER = {
 };
 
 const DEFAULT_RESPONSE_SUFFIX = '-response';
+const DEFAULT_MAX_INCOMING_MESSAGE_BYTES = 64 * 1024;
+const DEFAULT_MAX_PENDING_REQUESTS = 500;
 
 const isNonEmptyString = (value) => typeof value === 'string' && value.length > 0;
 
@@ -46,6 +49,8 @@ const parseRequestOptions = (optionsOrTimeout) => {
  * @param {(message: object) => string} [config.serializer]
  * @param {{ error?: (...args: unknown[]) => void }} [config.logger]
  * @param {string} [config.responseSuffix]
+ * @param {number} [config.maxIncomingMessageBytes]
+ * @param {number} [config.maxPendingRequests]
  */
 export function createCommandBus({
   sendFn,
@@ -55,7 +60,9 @@ export function createCommandBus({
   parser = JSON.parse,
   serializer = JSON.stringify,
   logger = NOOP_LOGGER,
-  responseSuffix = DEFAULT_RESPONSE_SUFFIX
+  responseSuffix = DEFAULT_RESPONSE_SUFFIX,
+  maxIncomingMessageBytes = DEFAULT_MAX_INCOMING_MESSAGE_BYTES,
+  maxPendingRequests = DEFAULT_MAX_PENDING_REQUESTS
 }) {
   if (typeof sendFn !== 'function') {
     throw new TypeError('`sendFn` must be a function.');
@@ -83,6 +90,14 @@ export function createCommandBus({
 
   if (!isNonEmptyString(responseSuffix)) {
     throw new TypeError('`responseSuffix` must be a non-empty string.');
+  }
+
+  if (!Number.isFinite(maxIncomingMessageBytes) || maxIncomingMessageBytes <= 0) {
+    throw new TypeError('`maxIncomingMessageBytes` must be a finite number greater than 0.');
+  }
+
+  if (!Number.isInteger(maxPendingRequests) || maxPendingRequests <= 0) {
+    throw new TypeError('`maxPendingRequests` must be an integer greater than 0.');
   }
 
   const handlers = new Map();
@@ -223,6 +238,12 @@ export function createCommandBus({
     const id = generateId();
     const expectedResponseType = getResponseType(type);
 
+    if (pendingRequests.size >= maxPendingRequests) {
+      throw new CommandBusLimitError(
+        `Pending request limit reached (${maxPendingRequests}). Resolve or abort requests before creating new ones.`
+      );
+    }
+
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         clearPendingRequest(id);
@@ -267,6 +288,13 @@ export function createCommandBus({
 
   const receive = (raw) => {
     if (disposed) {
+      return;
+    }
+
+    if (typeof raw === 'string' && raw.length > maxIncomingMessageBytes) {
+      safeLogError(
+        `[SimplexBus] Incoming message exceeds maxIncomingMessageBytes (${maxIncomingMessageBytes}).`
+      );
       return;
     }
 

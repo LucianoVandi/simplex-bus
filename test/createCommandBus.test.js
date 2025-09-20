@@ -5,10 +5,12 @@ import {
   CommandBusAbortedError,
   CommandBusDisposedError,
   CommandBusInvalidMessageError,
+  CommandBusLimitError,
   CommandBusRemoteError,
   CommandBusSerializationError,
   CommandBusTimeoutError,
   CommandBusValidationError,
+  createSchemaValidators,
   createCommandBus
 } from '../index.js';
 
@@ -178,6 +180,8 @@ test('constructor validates required config types', () => {
   assert.throws(() => createCommandBus({ sendFn: () => {}, parser: 1 }), /parser/);
   assert.throws(() => createCommandBus({ sendFn: () => {}, serializer: 1 }), /serializer/);
   assert.throws(() => createCommandBus({ sendFn: () => {}, responseSuffix: '' }), /responseSuffix/);
+  assert.throws(() => createCommandBus({ sendFn: () => {}, maxIncomingMessageBytes: 0 }), /maxIncomingMessageBytes/);
+  assert.throws(() => createCommandBus({ sendFn: () => {}, maxPendingRequests: 0 }), /maxPendingRequests/);
 });
 
 test('on/once/off validate arguments', () => {
@@ -300,4 +304,76 @@ test('dispose is idempotent', () => {
 test('CommandBusInvalidMessageError can be created explicitly', () => {
   const error = new CommandBusInvalidMessageError('bad');
   assert.equal(error.message, 'bad');
+});
+
+test('maxIncomingMessageBytes drops oversized messages', () => {
+  const logs = [];
+  let called = 0;
+  const bus = createCommandBus({
+    sendFn: () => {},
+    maxIncomingMessageBytes: 10,
+    logger: { error: (...args) => logs.push(args) }
+  });
+
+  bus.on('ping', () => {
+    called += 1;
+  });
+
+  bus.receive('{"type":"ping","payload":"this payload is too long"}');
+  assert.equal(called, 0);
+  assert.equal(logs.length, 1);
+});
+
+test('maxPendingRequests protects from unbounded pending growth', async () => {
+  const bus = createCommandBus({
+    sendFn: () => {},
+    maxPendingRequests: 1
+  });
+
+  const pending = bus.request('first', undefined, 1000);
+  assert.throws(() => bus.request('second', undefined, 1000), CommandBusLimitError);
+
+  bus.dispose();
+  await assert.rejects(() => pending, CommandBusDisposedError);
+});
+
+test('createSchemaValidators builds request and response validators', () => {
+  const compile = (schema) => {
+    if (schema.type === 'string') {
+      return (payload) => typeof payload === 'string';
+    }
+
+    if (schema.type === 'object' && schema.required?.includes('token')) {
+      return (payload) =>
+        payload && typeof payload === 'object' && typeof payload.token === 'string';
+    }
+
+    if (schema.type === 'object' && schema.required?.includes('message')) {
+      return (payload) =>
+        payload && typeof payload === 'object' && typeof payload.message === 'string';
+    }
+
+    return () => false;
+  };
+
+  const validators = createSchemaValidators({
+    compile,
+    schemaMap: {
+      'auth/get-token': {
+        request: { type: 'string' },
+        response: { type: 'object', required: ['token'] },
+        error: { type: 'object', required: ['message'] }
+      }
+    }
+  });
+
+  assert.equal(validators['auth/get-token']('x'), true);
+  assert.equal(validators['auth/get-token-response']({ token: 'abc' }), true);
+  assert.equal(validators['auth/get-token-response']({ message: 'oops' }), true);
+  assert.equal(validators['auth/get-token-response']({ invalid: true }), false);
+});
+
+test('createSchemaValidators validates config', () => {
+  assert.throws(() => createSchemaValidators({ compile: () => () => true }), /schemaMap/);
+  assert.throws(() => createSchemaValidators({ schemaMap: {}, compile: 1 }), /compile/);
 });

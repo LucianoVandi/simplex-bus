@@ -1,4 +1,5 @@
 export { createCommandBus } from './src/createCommandBus.js';
+export { createSchemaValidators } from './src/createSchemaValidators.js';
 export {
   CommandBusError,
   CommandBusDisposedError,
@@ -7,5 +8,6 @@ export {
   CommandBusInvalidMessageError,
   CommandBusTimeoutError,
   CommandBusAbortedError,
-  CommandBusRemoteError
+  CommandBusRemoteError,
+  CommandBusLimitError
 } from './src/errors.js';

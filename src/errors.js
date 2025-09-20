@@ -35,3 +35,5 @@ export class CommandBusRemoteError extends CommandBusError {
     this.payload = payload;
   }
 }
+
+export class CommandBusLimitError extends CommandBusError {}

@@ -7,6 +7,7 @@ A transport-agnostic command bus for safe cross-context messaging (`WebView`, `i
 - Request/response correlation with timeout and abort support
 - Clean lifecycle (`on`, `once`, `off`, `dispose`)
 - Explicit runtime errors for predictable failure handling
+- Runtime safety guardrails (`maxIncomingMessageBytes`, `maxPendingRequests`)
 
 ## Installation
 
@@ -53,6 +54,8 @@ Config:
 - `serializer(message: object): string` optional output serializer (default `JSON.stringify`)
 - `logger.error(...args)` optional logger hook
 - `responseSuffix: string` optional response suffix (default `-response`)
+- `maxIncomingMessageBytes: number` optional incoming raw string size limit in bytes/chars (default `65536`)
+- `maxPendingRequests: number` optional pending request cap to prevent unbounded growth (default `500`)
 
 Bus methods:
 - `send(type, payload?)`
@@ -78,6 +81,38 @@ Exports:
 - `CommandBusTimeoutError`
 - `CommandBusAbortedError`
 - `CommandBusRemoteError`
+- `CommandBusLimitError`
+
+## JSON Schema Integration
+
+For cross-boundary messaging (`React Native` <-> `WebView` <-> `web app`), prefer schema-first contracts.
+
+`Simplex Bus` exports `createSchemaValidators(...)` to compile JSON Schemas into `validators` accepted by `createCommandBus`.
+
+```js
+import Ajv from 'ajv';
+import { createCommandBus, createSchemaValidators } from '@lucianovandi/simplex-bus';
+
+const schemaMap = {
+  'auth/get-token': {
+    request: { type: 'object', required: ['sessionId'], properties: { sessionId: { type: 'string' } } },
+    response: { type: 'object', required: ['token'], properties: { token: { type: 'string' } } },
+    error: { type: 'object', required: ['code', 'message'], properties: { code: { type: 'string' }, message: { type: 'string' } } }
+  }
+};
+
+const ajv = new Ajv({ allErrors: true });
+const validators = createSchemaValidators({
+  schemaMap,
+  compile: (schema) => ajv.compile(schema)
+});
+
+const bus = createCommandBus({ sendFn, validators });
+```
+
+`createSchemaValidators` maps each command type to:
+- request validator on `<type>`
+- response validator on `<type>-response` (accepting success and error payload shapes when both are provided)
 
 ## Quality Gates
 
@@ -103,6 +138,7 @@ This repository includes:
 
 - WebView bridge example: `examples/webview-bridge.js`
 - iframe bridge example: `examples/iframe-bridge.js`
+- JSON Schema contract example: `examples/schema-first-contract.js`
 
 ## Architecture Notes
 

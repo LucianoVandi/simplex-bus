@@ -14,6 +14,7 @@ export class CommandBusRemoteError<TPayload = unknown> extends CommandBusError {
   type: string;
   payload: TPayload;
 }
+export class CommandBusLimitError extends CommandBusError {}
 
 export interface RequestOptions {
   timeout?: number;
@@ -41,6 +42,8 @@ export interface CreateCommandBusConfig {
     error?: (...args: unknown[]) => void;
   };
   responseSuffix?: string;
+  maxIncomingMessageBytes?: number;
+  maxPendingRequests?: number;
 }
 
 export interface CommandBus {
@@ -55,3 +58,19 @@ export interface CommandBus {
 }
 
 export function createCommandBus(config: CreateCommandBusConfig): CommandBus;
+
+export type SchemaEntry = {
+  request?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+  error?: Record<string, unknown>;
+};
+
+export interface CreateSchemaValidatorsConfig {
+  schemaMap: Record<string, SchemaEntry>;
+  compile: (schema: Record<string, unknown>) => (payload: unknown) => boolean;
+  responseSuffix?: string;
+}
+
+export function createSchemaValidators(
+  config: CreateSchemaValidatorsConfig
+): Record<string, (payload: unknown) => boolean>;

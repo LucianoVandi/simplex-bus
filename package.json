@@ -17,7 +17,8 @@
     "test": "node --test",
     "coverage": "node --test --experimental-test-coverage",
     "check:coverage": "node scripts/check-coverage.mjs",
-    "lint": "node --check index.js src/*.js test/*.js scripts/*.mjs",
+    "lint": "node --check index.js src/*.js test/*.js scripts/*.mjs examples/*.js examples/e2e/*.mjs",
+    "demo:e2e": "node examples/e2e/local-bridge-demo.mjs",
     "pack:check": "npm pack --dry-run --cache ./.npm-cache",
     "check": "npm run lint && npm run test && npm run check:coverage && npm run pack:check"
   },

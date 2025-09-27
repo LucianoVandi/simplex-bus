@@ -124,6 +124,13 @@ Includes:
 - Syntax checks
 - Full test suite
 - Coverage thresholds (`line >= 90`, `branch >= 85`, `funcs >= 90`)
+- Public API contract tests (exports and method surface stability)
+
+Run local bridge demo:
+
+```bash
+npm run demo:e2e
+```
 
 ## Repository Standards
 
@@ -139,6 +146,7 @@ This repository includes:
 - WebView bridge example: `examples/webview-bridge.js`
 - iframe bridge example: `examples/iframe-bridge.js`
 - JSON Schema contract example: `examples/schema-first-contract.js`
+- End-to-end local bridge demo: `examples/e2e/local-bridge-demo.mjs`
 
 ## Architecture Notes
 

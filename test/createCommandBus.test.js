@@ -324,6 +324,25 @@ test('maxIncomingMessageBytes drops oversized messages', () => {
   assert.equal(logs.length, 1);
 });
 
+test('maxIncomingMessageBytes uses UTF-8 byte size, not character count', () => {
+  const logs = [];
+  let called = 0;
+  const bus = createCommandBus({
+    sendFn: () => {},
+    maxIncomingMessageBytes: 16,
+    logger: { error: (...args) => logs.push(args) }
+  });
+
+  bus.on('x', () => {
+    called += 1;
+  });
+
+  // "😀" is 4 bytes in UTF-8. This payload crosses 16 bytes quickly.
+  bus.receive(JSON.stringify({ type: 'x', payload: '😀😀😀😀😀' }));
+  assert.equal(called, 0);
+  assert.equal(logs.length, 1);
+});
+
 test('maxPendingRequests protects from unbounded pending growth', async () => {
   const bus = createCommandBus({
     sendFn: () => {},
@@ -370,10 +389,79 @@ test('createSchemaValidators builds request and response validators', () => {
   assert.equal(validators['auth/get-token']('x'), true);
   assert.equal(validators['auth/get-token-response']({ token: 'abc' }), true);
   assert.equal(validators['auth/get-token-response']({ message: 'oops' }), true);
-  assert.equal(validators['auth/get-token-response']({ invalid: true }), false);
+  assert.throws(
+    () => validators['auth/get-token-response']({ invalid: true }),
+    CommandBusValidationError
+  );
 });
 
 test('createSchemaValidators validates config', () => {
   assert.throws(() => createSchemaValidators({ compile: () => () => true }), /schemaMap/);
   assert.throws(() => createSchemaValidators({ schemaMap: {}, compile: 1 }), /compile/);
+  assert.throws(
+    () => createSchemaValidators({ schemaMap: {}, compile: () => () => true, onValidationError: 1 }),
+    /onValidationError/
+  );
+});
+
+test('createSchemaValidators surfaces validation diagnostics', () => {
+  const diagnostics = [];
+  const compile = () => {
+    const fn = () => false;
+    fn.errors = [{ path: '/token', message: 'required' }];
+    return fn;
+  };
+
+  const validators = createSchemaValidators({
+    compile,
+    onValidationError: (details) => diagnostics.push(details),
+    schemaMap: {
+      'auth/get-token': {
+        response: { type: 'object', required: ['token'] }
+      }
+    }
+  });
+
+  assert.throws(
+    () => validators['auth/get-token-response']({}),
+    (error) =>
+      error instanceof CommandBusValidationError &&
+      error.details &&
+      error.details.type === 'auth/get-token' &&
+      error.details.channel === 'response'
+  );
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0].channel, 'response');
+});
+
+test('receive is robust against malformed random inputs (fuzz smoke)', () => {
+  const bus = createCommandBus({
+    sendFn: () => {},
+    logger: { error: () => {} }
+  });
+
+  const randomValues = [
+    null,
+    undefined,
+    true,
+    0,
+    NaN,
+    '',
+    '{',
+    '[]',
+    '"text"',
+    '{}',
+    '{"type":""}',
+    '{"id":123}',
+    [],
+    {},
+    { type: '' },
+    { type: 'ok', id: '' },
+    { type: 'ok', payload: { a: 1 } }
+  ];
+
+  for (let i = 0; i < 500; i += 1) {
+    const value = randomValues[i % randomValues.length];
+    assert.doesNotThrow(() => bus.receive(value));
+  }
 });

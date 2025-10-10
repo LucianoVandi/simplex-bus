@@ -16,10 +16,12 @@ const NOOP_LOGGER = {
 const DEFAULT_RESPONSE_SUFFIX = '-response';
 const DEFAULT_MAX_INCOMING_MESSAGE_BYTES = 64 * 1024;
 const DEFAULT_MAX_PENDING_REQUESTS = 500;
+const TEXT_ENCODER = typeof TextEncoder !== 'undefined' ? new TextEncoder() : undefined;
 
 const isNonEmptyString = (value) => typeof value === 'string' && value.length > 0;
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const getStringSizeInBytes = (value) => (TEXT_ENCODER ? TEXT_ENCODER.encode(value).length : value.length);
 
 const parseRequestOptions = (optionsOrTimeout) => {
   if (typeof optionsOrTimeout === 'number' || optionsOrTimeout === undefined) {
@@ -291,7 +293,7 @@ export function createCommandBus({
       return;
     }
 
-    if (typeof raw === 'string' && raw.length > maxIncomingMessageBytes) {
+    if (typeof raw === 'string' && getStringSizeInBytes(raw) > maxIncomingMessageBytes) {
       safeLogError(
         `[SimplexBus] Incoming message exceeds maxIncomingMessageBytes (${maxIncomingMessageBytes}).`
       );

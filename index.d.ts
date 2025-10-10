@@ -67,8 +67,16 @@ export type SchemaEntry = {
 
 export interface CreateSchemaValidatorsConfig {
   schemaMap: Record<string, SchemaEntry>;
-  compile: (schema: Record<string, unknown>) => (payload: unknown) => boolean;
+  compile: (
+    schema: Record<string, unknown>
+  ) => ((payload: unknown) => boolean) & { errors?: unknown[] };
   responseSuffix?: string;
+  onValidationError?: (details: {
+    type: string;
+    channel: 'request' | 'response' | 'error';
+    payload: unknown;
+    errors: unknown[];
+  }) => void;
 }
 
 export function createSchemaValidators(

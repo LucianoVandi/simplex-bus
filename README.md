@@ -54,7 +54,7 @@ Config:
 - `serializer(message: object): string` optional output serializer (default `JSON.stringify`)
 - `logger.error(...args)` optional logger hook
 - `responseSuffix: string` optional response suffix (default `-response`)
-- `maxIncomingMessageBytes: number` optional incoming raw string size limit in bytes/chars (default `65536`)
+- `maxIncomingMessageBytes: number` optional incoming raw string size limit in UTF-8 bytes (default `65536`)
 - `maxPendingRequests: number` optional pending request cap to prevent unbounded growth (default `500`)
 
 Bus methods:
@@ -104,7 +104,10 @@ const schemaMap = {
 const ajv = new Ajv({ allErrors: true });
 const validators = createSchemaValidators({
   schemaMap,
-  compile: (schema) => ajv.compile(schema)
+  compile: (schema) => ajv.compile(schema),
+  onValidationError: (details) => {
+    console.error('Schema validation diagnostics', details);
+  }
 });
 
 const bus = createCommandBus({ sendFn, validators });
@@ -113,6 +116,8 @@ const bus = createCommandBus({ sendFn, validators });
 `createSchemaValidators` maps each command type to:
 - request validator on `<type>`
 - response validator on `<type>-response` (accepting success and error payload shapes when both are provided)
+
+When a schema validation fails, validators throw `CommandBusValidationError` with diagnostic details on `error.details`.
 
 ## Quality Gates
 
@@ -125,12 +130,20 @@ Includes:
 - Full test suite
 - Coverage thresholds (`line >= 90`, `branch >= 85`, `funcs >= 90`)
 - Public API contract tests (exports and method surface stability)
+- Type declaration contract checks (`npm run typecheck`, via `typescript`)
 
 Run local bridge demo:
 
 ```bash
 npm run demo:e2e
 ```
+
+Run Ajv-powered local bridge demo:
+
+```bash
+npm run demo:e2e:ajv
+```
+If Ajv is not installed locally, run `npm install --save-dev ajv` first.
 
 ## Repository Standards
 
@@ -147,6 +160,11 @@ This repository includes:
 - iframe bridge example: `examples/iframe-bridge.js`
 - JSON Schema contract example: `examples/schema-first-contract.js`
 - End-to-end local bridge demo: `examples/e2e/local-bridge-demo.mjs`
+- End-to-end Ajv demo: `examples/e2e/local-bridge-demo-ajv.mjs`
+
+Note on the E2E demo:
+- `examples/e2e/local-bridge-demo.mjs` uses a lightweight JSON Schema subset compiler for offline/local execution.
+- For production-grade validation, use Ajv as shown in `examples/schema-first-contract.js`.
 
 ## Architecture Notes
 

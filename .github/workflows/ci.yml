@@ -47,3 +47,6 @@ jobs:
 
       - name: Run quality checks
         run: npm run check
+
+      - name: Run type contract checks
+        run: npm run typecheck

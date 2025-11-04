@@ -7,7 +7,14 @@ export class CommandBusError extends Error {
 
 export class CommandBusDisposedError extends CommandBusError {}
 
-export class CommandBusValidationError extends CommandBusError {}
+export class CommandBusValidationError extends CommandBusError {
+  constructor(message, options = {}) {
+    super(message, options);
+    if (Object.prototype.hasOwnProperty.call(options, 'details')) {
+      this.details = options.details;
+    }
+  }
+}
 
 export class CommandBusSerializationError extends CommandBusError {}
 

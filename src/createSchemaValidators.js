@@ -37,10 +37,6 @@ export function createSchemaValidators({
   }
 
   const toValidationError = (type, channel, payload, validator) => {
-    const validationError = new CommandBusValidationError(
-      `Schema validation failed for type "${type}" on ${channel}.`
-    );
-
     const details = {
       type,
       channel,
@@ -52,8 +48,10 @@ export function createSchemaValidators({
       onValidationError(details);
     }
 
-    validationError.details = details;
-    return validationError;
+    return new CommandBusValidationError(
+      `Schema validation failed for type "${type}" on ${channel}.`,
+      { details }
+    );
   };
 
   const compileWithDiagnostics = (type, channel, schema) => {

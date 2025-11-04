@@ -1,6 +1,15 @@
 export class CommandBusError extends Error {}
 export class CommandBusDisposedError extends CommandBusError {}
-export class CommandBusValidationError extends CommandBusError {}
+export interface ValidationErrorDetails {
+  type?: string;
+  channel?: 'request' | 'response' | 'error';
+  payload?: unknown;
+  errors?: unknown[];
+}
+
+export class CommandBusValidationError extends CommandBusError {
+  details?: ValidationErrorDetails;
+}
 export class CommandBusSerializationError extends CommandBusError {}
 export class CommandBusInvalidMessageError extends CommandBusError {}
 export class CommandBusTimeoutError extends CommandBusError {
@@ -19,6 +28,15 @@ export class CommandBusLimitError extends CommandBusError {}
 export interface RequestOptions {
   timeout?: number;
   signal?: AbortSignal;
+}
+
+export interface TrustedResponseInfo {
+  requestType: string;
+  requestId: string;
+  responseType: string;
+  payload: unknown;
+  isError: boolean;
+  raw: string | Record<string, unknown>;
 }
 
 export interface CommandContext<TResponse = unknown, TError = unknown> {
@@ -44,6 +62,7 @@ export interface CreateCommandBusConfig {
   responseSuffix?: string;
   maxIncomingMessageBytes?: number;
   maxPendingRequests?: number;
+  isTrustedResponse?: (info: TrustedResponseInfo) => boolean;
 }
 
 export interface CommandBus {

@@ -22,14 +22,43 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1);
 }
 
-const match = result.stdout.match(/all files\s+\|\s+([\d.]+)\s+\|\s+([\d.]+)\s+\|\s+([\d.]+)\s+\|/i);
+const stripAnsi = (value) => value.replace(/\u001b\[[0-9;]*m/g, '');
 
-if (!match) {
+const parseCoverageSummary = (stdout) => {
+  const normalized = stripAnsi(stdout);
+  const lines = normalized.split(/\r?\n/);
+  const summaryRow = lines.find((line) => /^\s*[|ℹ]?\s*all files\s*\|/i.test(line));
+
+  if (!summaryRow) {
+    return null;
+  }
+
+  const cells = summaryRow
+    .replace(/^\s*[|ℹ]\s*/, '')
+    .split('|')
+    .map((cell) => cell.trim())
+    .filter((cell) => cell.length > 0);
+
+  if (cells.length < 4) {
+    return null;
+  }
+
+  const [line, branch, funcs] = cells.slice(1, 4).map(Number);
+  if ([line, branch, funcs].some((value) => Number.isNaN(value))) {
+    return null;
+  }
+
+  return { line, branch, funcs };
+};
+
+const parsedCoverage = parseCoverageSummary(result.stdout);
+
+if (!parsedCoverage) {
   console.error('Coverage summary row for "all files" not found.');
   process.exit(1);
 }
 
-const [line, branch, funcs] = match.slice(1).map(Number);
+const { line, branch, funcs } = parsedCoverage;
 
 const failures = [];
 if (line < thresholds.line) {

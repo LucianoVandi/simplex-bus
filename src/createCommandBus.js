@@ -17,11 +17,27 @@ const DEFAULT_RESPONSE_SUFFIX = '-response';
 const DEFAULT_MAX_INCOMING_MESSAGE_BYTES = 64 * 1024;
 const DEFAULT_MAX_PENDING_REQUESTS = 500;
 const TEXT_ENCODER = typeof TextEncoder !== 'undefined' ? new TextEncoder() : undefined;
+const NOOP_RESPONSE_TRUST_GUARD = () => true;
 
 const isNonEmptyString = (value) => typeof value === 'string' && value.length > 0;
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const getStringSizeInBytes = (value) => (TEXT_ENCODER ? TEXT_ENCODER.encode(value).length : value.length);
+
+const getRandomHex = (sizeInBytes) => {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(sizeInBytes);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+  }
+
+  let randomHex = '';
+  for (let index = 0; index < sizeInBytes; index += 1) {
+    randomHex += Math.floor(Math.random() * 256).toString(16).padStart(2, '0');
+  }
+
+  return randomHex;
+};
 
 const parseRequestOptions = (optionsOrTimeout) => {
   if (typeof optionsOrTimeout === 'number' || optionsOrTimeout === undefined) {
@@ -53,6 +69,7 @@ const parseRequestOptions = (optionsOrTimeout) => {
  * @param {string} [config.responseSuffix]
  * @param {number} [config.maxIncomingMessageBytes]
  * @param {number} [config.maxPendingRequests]
+ * @param {(info: { requestType: string, requestId: string, responseType: string, payload: unknown, isError: boolean, raw: string | object }) => boolean} [config.isTrustedResponse]
  */
 export function createCommandBus({
   sendFn,
@@ -64,7 +81,8 @@ export function createCommandBus({
   logger = NOOP_LOGGER,
   responseSuffix = DEFAULT_RESPONSE_SUFFIX,
   maxIncomingMessageBytes = DEFAULT_MAX_INCOMING_MESSAGE_BYTES,
-  maxPendingRequests = DEFAULT_MAX_PENDING_REQUESTS
+  maxPendingRequests = DEFAULT_MAX_PENDING_REQUESTS,
+  isTrustedResponse = NOOP_RESPONSE_TRUST_GUARD
 }) {
   if (typeof sendFn !== 'function') {
     throw new TypeError('`sendFn` must be a function.');
@@ -100,6 +118,10 @@ export function createCommandBus({
 
   if (!Number.isInteger(maxPendingRequests) || maxPendingRequests <= 0) {
     throw new TypeError('`maxPendingRequests` must be an integer greater than 0.');
+  }
+
+  if (typeof isTrustedResponse !== 'function') {
+    throw new TypeError('`isTrustedResponse` must be a function when provided.');
   }
 
   const handlers = new Map();
@@ -143,7 +165,15 @@ export function createCommandBus({
     }
   };
 
-  const generateId = () => `cmd-${Date.now()}-${++requestCounter}`;
+  const generateId = () => {
+    requestCounter += 1;
+
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `cmd-${crypto.randomUUID()}`;
+    }
+
+    return `cmd-${getRandomHex(16)}-${requestCounter}`;
+  };
 
   const safeLogError = (...args) => {
     if (logger && typeof logger.error === 'function') {
@@ -310,6 +340,30 @@ export function createCommandBus({
 
     const pending = message.id ? pendingRequests.get(message.id) : undefined;
     if (pending && message.type === pending.expectedResponseType) {
+      let trustedResponse;
+      try {
+        trustedResponse = isTrustedResponse({
+          requestType: pending.type,
+          requestId: message.id,
+          responseType: message.type,
+          payload: message.payload,
+          isError: message.isError === true,
+          raw
+        });
+      } catch (error) {
+        safeLogError('[SimplexBus] Trusted response guard failed', error);
+        return;
+      }
+
+      if (!trustedResponse) {
+        safeLogError('[SimplexBus] Dropped untrusted response', {
+          requestType: pending.type,
+          requestId: message.id,
+          responseType: message.type
+        });
+        return;
+      }
+
       try {
         validatePayload(message.type, message.payload);
       } catch (error) {

@@ -7,8 +7,10 @@ const dts = readFileSync(new URL('../index.d.ts', import.meta.url), 'utf8');
 test('index.d.ts exports core API signatures (contract smoke)', () => {
   const requiredSignatures = [
     'export interface CreateCommandBusConfig',
+    'isTrustedResponse?: (info: TrustedResponseInfo) => boolean;',
     'maxIncomingMessageBytes?: number;',
     'maxPendingRequests?: number;',
+    'details?: ValidationErrorDetails;',
     'export interface CommandBus',
     'send(type: string, payload?: unknown): void;',
     'request(type: string, payload?: unknown, timeout?: number): Promise<unknown>;',

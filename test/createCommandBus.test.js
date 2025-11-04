@@ -81,6 +81,29 @@ test('request supports AbortSignal', async () => {
   await assert.rejects(() => promise, CommandBusAbortedError);
 });
 
+test('request rejects untrusted responses through isTrustedResponse guard', async () => {
+  const logs = [];
+  const { busA, busB } = createLinkedBuses(
+    {
+      logger: { error: (...args) => logs.push(args) },
+      isTrustedResponse: () => false
+    },
+    {}
+  );
+
+  busB.on('secure', (_, context) => {
+    context.respond({ token: 'accepted' });
+  });
+
+  await assert.rejects(
+    () => busA.request('secure', undefined, 25),
+    (error) => error instanceof CommandBusTimeoutError
+  );
+
+  assert.equal(logs.length > 0, true);
+  assert.equal(logs.some((entry) => String(entry[0]).includes('Dropped untrusted response')), true);
+});
+
 test('validator is applied for send and receive paths', () => {
   const validator = {
     ping: (payload) => payload && payload.valid === true
@@ -182,6 +205,7 @@ test('constructor validates required config types', () => {
   assert.throws(() => createCommandBus({ sendFn: () => {}, responseSuffix: '' }), /responseSuffix/);
   assert.throws(() => createCommandBus({ sendFn: () => {}, maxIncomingMessageBytes: 0 }), /maxIncomingMessageBytes/);
   assert.throws(() => createCommandBus({ sendFn: () => {}, maxPendingRequests: 0 }), /maxPendingRequests/);
+  assert.throws(() => createCommandBus({ sendFn: () => {}, isTrustedResponse: 'nope' }), /isTrustedResponse/);
 });
 
 test('on/once/off validate arguments', () => {

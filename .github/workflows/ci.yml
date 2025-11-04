@@ -46,7 +46,10 @@ jobs:
         run: npm ci
 
       - name: Run quality checks
-        run: npm run check
+        run: npm run lint && npm run check:coverage && npm run pack:check
 
       - name: Run type contract checks
         run: npm run typecheck
+
+      - name: Run dependency vulnerability audit
+        run: npm audit --audit-level=high

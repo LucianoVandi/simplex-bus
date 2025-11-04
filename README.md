@@ -56,6 +56,7 @@ Config:
 - `responseSuffix: string` optional response suffix (default `-response`)
 - `maxIncomingMessageBytes: number` optional incoming raw string size limit in UTF-8 bytes (default `65536`)
 - `maxPendingRequests: number` optional pending request cap to prevent unbounded growth (default `500`)
+- `isTrustedResponse(info): boolean` optional guard to accept/reject candidate responses before request resolution
 
 Bus methods:
 - `send(type, payload?)`
@@ -189,6 +190,8 @@ Envelope fields:
 - Payload validation per message type.
 - Pending requests are cleaned up on timeout, abort, or dispose.
 - Parser/serializer failures are wrapped in domain errors.
+- Response correlation IDs are random UUID-based when available (with random fallback).
+- Optional `isTrustedResponse` guard can enforce provenance/channel checks in untrusted transports.
 
 ### Tradeoffs
 

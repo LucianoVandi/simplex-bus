@@ -18,7 +18,7 @@
     "coverage": "node --test --experimental-test-coverage",
     "check:coverage": "node scripts/check-coverage.mjs",
     "typecheck": "npm exec --yes --package typescript -- tsc --noEmit -p tsconfig.typecheck.json",
-    "lint": "node --check index.js src/*.js test/*.js scripts/*.mjs examples/*.js examples/e2e/*.mjs",
+    "lint": "eslint . --max-warnings=0 && node --check index.js src/*.js src/internal/*.js test/*.js fixtures/helpers/*.js scripts/*.mjs examples/*.js examples/e2e/*.mjs",
     "demo:e2e": "node examples/e2e/local-bridge-demo.mjs",
     "demo:e2e:ajv": "node examples/e2e/local-bridge-demo-ajv.mjs",
     "pack:check": "npm pack --dry-run --cache ./.npm-cache",
@@ -47,6 +47,7 @@
   },
   "devDependencies": {
     "ajv": "^8.17.1",
+    "eslint": "^9.39.2",
     "typescript": "^5.9.3"
   }
 }

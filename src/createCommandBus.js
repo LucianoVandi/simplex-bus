@@ -5,57 +5,24 @@ import {
   CommandBusLimitError,
   CommandBusRemoteError,
   CommandBusSerializationError,
-  CommandBusTimeoutError,
-  CommandBusValidationError
+  CommandBusValidationError,
+  CommandBusTimeoutError
 } from './errors.js';
+import { parseRequestOptions, validateCreateConfig } from './internal/config.js';
+import { createPendingRequestsStore } from './internal/pendingRequests.js';
+import {
+  DEFAULT_MAX_INCOMING_MESSAGE_BYTES,
+  DEFAULT_MAX_PENDING_REQUESTS,
+  DEFAULT_RESPONSE_SUFFIX,
+  DEFAULT_RESPONSE_TRUST_MODE,
+  NOOP_LOGGER,
+  getRandomHex,
+  getStringSizeInBytes,
+  isNonEmptyString,
+  isObject
+} from './internal/shared.js';
 
-const NOOP_LOGGER = {
-  error: () => {}
-};
-
-const DEFAULT_RESPONSE_SUFFIX = '-response';
-const DEFAULT_MAX_INCOMING_MESSAGE_BYTES = 64 * 1024;
-const DEFAULT_MAX_PENDING_REQUESTS = 500;
-const DEFAULT_RESPONSE_TRUST_MODE = 'auto';
-const TEXT_ENCODER = typeof TextEncoder !== 'undefined' ? new TextEncoder() : undefined;
 const NOOP_RESPONSE_TRUST_GUARD = () => true;
-const RESPONSE_TRUST_MODES = new Set(['auto', 'strict', 'permissive']);
-
-const isNonEmptyString = (value) => typeof value === 'string' && value.length > 0;
-
-const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
-const getStringSizeInBytes = (value) => (TEXT_ENCODER ? TEXT_ENCODER.encode(value).length : value.length);
-
-const getRandomHex = (sizeInBytes) => {
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    const bytes = new Uint8Array(sizeInBytes);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
-  }
-
-  let randomHex = '';
-  for (let index = 0; index < sizeInBytes; index += 1) {
-    randomHex += Math.floor(Math.random() * 256).toString(16).padStart(2, '0');
-  }
-
-  return randomHex;
-};
-
-const parseRequestOptions = (optionsOrTimeout) => {
-  if (typeof optionsOrTimeout === 'number' || optionsOrTimeout === undefined) {
-    return { timeout: optionsOrTimeout ?? 5000, signal: undefined };
-  }
-
-  if (!isObject(optionsOrTimeout)) {
-    throw new TypeError('Request options must be a number or an object.');
-  }
-
-  const timeout = optionsOrTimeout.timeout ?? 5000;
-  return {
-    timeout,
-    signal: optionsOrTimeout.signal
-  };
-};
 
 /**
  * Creates a message bus for cross-context communication.
@@ -88,55 +55,25 @@ export function createCommandBus({
   responseTrustMode = DEFAULT_RESPONSE_TRUST_MODE,
   isTrustedResponse = NOOP_RESPONSE_TRUST_GUARD
 }) {
-  if (typeof sendFn !== 'function') {
-    throw new TypeError('`sendFn` must be a function.');
-  }
-
-  if (onReceive !== undefined && typeof onReceive !== 'function') {
-    throw new TypeError('`onReceive` must be a function when provided.');
-  }
-
-  if (!Array.isArray(allowedTypes)) {
-    throw new TypeError('`allowedTypes` must be an array of strings.');
-  }
-
-  if (!isObject(validators)) {
-    throw new TypeError('`validators` must be an object of functions.');
-  }
-
-  if (typeof parser !== 'function') {
-    throw new TypeError('`parser` must be a function.');
-  }
-
-  if (typeof serializer !== 'function') {
-    throw new TypeError('`serializer` must be a function.');
-  }
-
-  if (!isNonEmptyString(responseSuffix)) {
-    throw new TypeError('`responseSuffix` must be a non-empty string.');
-  }
-
-  if (!Number.isFinite(maxIncomingMessageBytes) || maxIncomingMessageBytes <= 0) {
-    throw new TypeError('`maxIncomingMessageBytes` must be a finite number greater than 0.');
-  }
-
-  if (!Number.isInteger(maxPendingRequests) || maxPendingRequests <= 0) {
-    throw new TypeError('`maxPendingRequests` must be an integer greater than 0.');
-  }
-
-  if (!RESPONSE_TRUST_MODES.has(responseTrustMode)) {
-    throw new TypeError('`responseTrustMode` must be one of: "auto", "strict", "permissive".');
-  }
-
-  if (typeof isTrustedResponse !== 'function') {
-    throw new TypeError('`isTrustedResponse` must be a function when provided.');
-  }
+  validateCreateConfig({
+    sendFn,
+    onReceive,
+    allowedTypes,
+    validators,
+    parser,
+    serializer,
+    responseSuffix,
+    maxIncomingMessageBytes,
+    maxPendingRequests,
+    responseTrustMode,
+    isTrustedResponse
+  });
 
   const isStrictResponseTrust =
     responseTrustMode === 'strict' || (responseTrustMode === 'auto' && typeof onReceive === 'function');
 
   const handlers = new Map();
-  const pendingRequests = new Map();
+  const pendingRequests = createPendingRequestsStore();
   const allowAllTypes = allowedTypes.length === 0;
   const allowedTypeSet = new Set(allowedTypes);
   let requestCounter = 0;
@@ -235,26 +172,27 @@ export function createCommandBus({
     sendFn(serialized);
   };
 
-  const clearPendingRequest = (id) => {
-    const pending = pendingRequests.get(id);
-    if (!pending) {
-      return;
+  const sendResponse = ({ message, payload, isError }) => {
+    if (!message.id) {
+      return false;
     }
 
-    clearTimeout(pending.timer);
+    sendEnvelope(
+      {
+        type: getResponseType(message.type),
+        payload,
+        id: message.id,
+        nonce: message.nonce,
+        isError
+      },
+      { skipTypeGuard: true }
+    );
 
-    if (pending.abortListener && pending.signal) {
-      pending.signal.removeEventListener('abort', pending.abortListener);
-    }
-
-    pendingRequests.delete(id);
+    return true;
   };
 
   const rejectAllPending = (error) => {
-    for (const [id, pending] of pendingRequests.entries()) {
-      clearPendingRequest(id);
-      pending.reject(error);
-    }
+    pendingRequests.rejectAll(error);
   };
 
   const send = (type, payload) => {
@@ -286,7 +224,7 @@ export function createCommandBus({
     const nonce = getRandomHex(16);
     const expectedResponseType = getResponseType(type);
 
-    if (pendingRequests.size >= maxPendingRequests) {
+    if (pendingRequests.size() >= maxPendingRequests) {
       throw new CommandBusLimitError(
         `Pending request limit reached (${maxPendingRequests}). Resolve or abort requests before creating new ones.`
       );
@@ -294,7 +232,7 @@ export function createCommandBus({
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        clearPendingRequest(id);
+        pendingRequests.clear(id);
         reject(new CommandBusTimeoutError(type, timeout));
       }, timeout);
 
@@ -317,7 +255,7 @@ export function createCommandBus({
         }
 
         pending.abortListener = () => {
-          clearPendingRequest(id);
+          pendingRequests.clear(id);
           reject(new CommandBusAbortedError(type));
         };
 
@@ -329,7 +267,7 @@ export function createCommandBus({
       try {
         sendEnvelope({ type, payload, id, nonce });
       } catch (error) {
-        clearPendingRequest(id);
+        pendingRequests.clear(id);
         reject(error);
       }
     });
@@ -395,12 +333,12 @@ export function createCommandBus({
       try {
         validatePayload(message.type, message.payload);
       } catch (error) {
-        clearPendingRequest(message.id);
+        pendingRequests.clear(message.id);
         pending.reject(error);
         return;
       }
 
-      clearPendingRequest(message.id);
+      pendingRequests.clear(message.id);
       if (message.isError) {
         pending.reject(new CommandBusRemoteError(pending.type, message.payload));
       } else {
@@ -426,40 +364,8 @@ export function createCommandBus({
     }
 
     const context = {
-      respond: (responsePayload) => {
-        if (!message.id) {
-          return false;
-        }
-
-        sendEnvelope(
-          {
-            type: getResponseType(message.type),
-            payload: responsePayload,
-            id: message.id,
-            nonce: message.nonce,
-            isError: false
-          },
-          { skipTypeGuard: true }
-        );
-        return true;
-      },
-      respondError: (responsePayload) => {
-        if (!message.id) {
-          return false;
-        }
-
-        sendEnvelope(
-          {
-            type: getResponseType(message.type),
-            payload: responsePayload,
-            id: message.id,
-            nonce: message.nonce,
-            isError: true
-          },
-          { skipTypeGuard: true }
-        );
-        return true;
-      }
+      respond: (responsePayload) => sendResponse({ message, payload: responsePayload, isError: false }),
+      respondError: (responsePayload) => sendResponse({ message, payload: responsePayload, isError: true })
     };
 
     for (const listener of listeners) {

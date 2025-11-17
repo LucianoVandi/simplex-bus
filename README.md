@@ -162,7 +162,7 @@ npm run check
 ```
 
 Includes:
-- Syntax checks
+- ESLint static analysis (`--max-warnings=0`)
 - Full test suite
 - Coverage thresholds (`line >= 90`, `branch >= 85`, `funcs >= 90`)
 - Public API contract tests (exports and method surface stability)

@@ -16,8 +16,10 @@ const NOOP_LOGGER = {
 const DEFAULT_RESPONSE_SUFFIX = '-response';
 const DEFAULT_MAX_INCOMING_MESSAGE_BYTES = 64 * 1024;
 const DEFAULT_MAX_PENDING_REQUESTS = 500;
+const DEFAULT_RESPONSE_TRUST_MODE = 'auto';
 const TEXT_ENCODER = typeof TextEncoder !== 'undefined' ? new TextEncoder() : undefined;
 const NOOP_RESPONSE_TRUST_GUARD = () => true;
+const RESPONSE_TRUST_MODES = new Set(['auto', 'strict', 'permissive']);
 
 const isNonEmptyString = (value) => typeof value === 'string' && value.length > 0;
 
@@ -69,7 +71,8 @@ const parseRequestOptions = (optionsOrTimeout) => {
  * @param {string} [config.responseSuffix]
  * @param {number} [config.maxIncomingMessageBytes]
  * @param {number} [config.maxPendingRequests]
- * @param {(info: { requestType: string, requestId: string, responseType: string, payload: unknown, isError: boolean, raw: string | object }) => boolean} [config.isTrustedResponse]
+ * @param {'auto' | 'strict' | 'permissive'} [config.responseTrustMode]
+ * @param {(info: { requestType: string, requestId: string, responseType: string, requestNonce: string, responseNonce?: string, payload: unknown, isError: boolean, raw: string | object }) => boolean} [config.isTrustedResponse]
  */
 export function createCommandBus({
   sendFn,
@@ -82,6 +85,7 @@ export function createCommandBus({
   responseSuffix = DEFAULT_RESPONSE_SUFFIX,
   maxIncomingMessageBytes = DEFAULT_MAX_INCOMING_MESSAGE_BYTES,
   maxPendingRequests = DEFAULT_MAX_PENDING_REQUESTS,
+  responseTrustMode = DEFAULT_RESPONSE_TRUST_MODE,
   isTrustedResponse = NOOP_RESPONSE_TRUST_GUARD
 }) {
   if (typeof sendFn !== 'function') {
@@ -120,9 +124,16 @@ export function createCommandBus({
     throw new TypeError('`maxPendingRequests` must be an integer greater than 0.');
   }
 
+  if (!RESPONSE_TRUST_MODES.has(responseTrustMode)) {
+    throw new TypeError('`responseTrustMode` must be one of: "auto", "strict", "permissive".');
+  }
+
   if (typeof isTrustedResponse !== 'function') {
     throw new TypeError('`isTrustedResponse` must be a function when provided.');
   }
+
+  const isStrictResponseTrust =
+    responseTrustMode === 'strict' || (responseTrustMode === 'auto' && typeof onReceive === 'function');
 
   const handlers = new Map();
   const pendingRequests = new Map();
@@ -194,6 +205,10 @@ export function createCommandBus({
 
     if (parsed.id !== undefined && !isNonEmptyString(parsed.id)) {
       throw new CommandBusInvalidMessageError('Incoming message `id` must be a non-empty string when provided.');
+    }
+
+    if (parsed.nonce !== undefined && !isNonEmptyString(parsed.nonce)) {
+      throw new CommandBusInvalidMessageError('Incoming message `nonce` must be a non-empty string when provided.');
     }
 
     return parsed;
@@ -268,6 +283,7 @@ export function createCommandBus({
     }
 
     const id = generateId();
+    const nonce = getRandomHex(16);
     const expectedResponseType = getResponseType(type);
 
     if (pendingRequests.size >= maxPendingRequests) {
@@ -285,6 +301,7 @@ export function createCommandBus({
       const pending = {
         type,
         expectedResponseType,
+        nonce,
         timer,
         signal,
         abortListener: undefined,
@@ -310,7 +327,7 @@ export function createCommandBus({
       pendingRequests.set(id, pending);
 
       try {
-        sendEnvelope({ type, payload, id });
+        sendEnvelope({ type, payload, id, nonce });
       } catch (error) {
         clearPendingRequest(id);
         reject(error);
@@ -346,6 +363,8 @@ export function createCommandBus({
           requestType: pending.type,
           requestId: message.id,
           responseType: message.type,
+          requestNonce: pending.nonce,
+          responseNonce: message.nonce,
           payload: message.payload,
           isError: message.isError === true,
           raw
@@ -357,6 +376,15 @@ export function createCommandBus({
 
       if (!trustedResponse) {
         safeLogError('[SimplexBus] Dropped untrusted response', {
+          requestType: pending.type,
+          requestId: message.id,
+          responseType: message.type
+        });
+        return;
+      }
+
+      if (isStrictResponseTrust && message.nonce !== pending.nonce) {
+        safeLogError('[SimplexBus] Dropped response with invalid nonce', {
           requestType: pending.type,
           requestId: message.id,
           responseType: message.type
@@ -408,6 +436,7 @@ export function createCommandBus({
             type: getResponseType(message.type),
             payload: responsePayload,
             id: message.id,
+            nonce: message.nonce,
             isError: false
           },
           { skipTypeGuard: true }
@@ -424,6 +453,7 @@ export function createCommandBus({
             type: getResponseType(message.type),
             payload: responsePayload,
             id: message.id,
+            nonce: message.nonce,
             isError: true
           },
           { skipTypeGuard: true }

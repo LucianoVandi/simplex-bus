@@ -56,6 +56,7 @@ Config:
 - `responseSuffix: string` optional response suffix (default `-response`)
 - `maxIncomingMessageBytes: number` optional incoming raw string size limit in UTF-8 bytes (default `65536`)
 - `maxPendingRequests: number` optional pending request cap to prevent unbounded growth (default `500`)
+- `responseTrustMode: 'auto' | 'strict' | 'permissive'` response trust policy (`auto` defaults to strict checks when `onReceive` is provided)
 - `isTrustedResponse(info): boolean` optional guard to accept/reject candidate responses before request resolution
 
 Bus methods:
@@ -119,6 +120,40 @@ const bus = createCommandBus({ sendFn, validators });
 - response validator on `<type>-response` (accepting success and error payload shapes when both are provided)
 
 When a schema validation fails, validators throw `CommandBusValidationError` with diagnostic details on `error.details`.
+
+## Trusted Response Example
+
+Use `isTrustedResponse` to bind responses to a trusted channel/origin before request resolution.
+
+```js
+const bus = createCommandBus({
+  sendFn: (message) => targetWindow.postMessage(message, 'https://app.example.com'),
+  onReceive: (handler) => {
+    const listener = (event) => {
+      handler({
+        ...JSON.parse(event.data),
+        _origin: event.origin,
+        _source: event.source
+      });
+    };
+    window.addEventListener('message', listener);
+    return () => window.removeEventListener('message', listener);
+  },
+  responseTrustMode: 'strict',
+  isTrustedResponse: ({ raw, requestNonce, responseNonce }) => {
+    if (!raw || typeof raw !== 'object') {
+      return false;
+    }
+
+    const messageEvent = raw;
+    return (
+      messageEvent._origin === 'https://app.example.com' &&
+      messageEvent._source === targetWindow &&
+      requestNonce === responseNonce
+    );
+  }
+});
+```
 
 ## Quality Gates
 
@@ -191,6 +226,7 @@ Envelope fields:
 - Pending requests are cleaned up on timeout, abort, or dispose.
 - Parser/serializer failures are wrapped in domain errors.
 - Response correlation IDs are random UUID-based when available (with random fallback).
+- Strict response trust is automatic when `onReceive` is configured (`responseTrustMode: 'auto'`).
 - Optional `isTrustedResponse` guard can enforce provenance/channel checks in untrusted transports.
 
 ### Tradeoffs

@@ -34,6 +34,8 @@ export interface TrustedResponseInfo {
   requestType: string;
   requestId: string;
   responseType: string;
+  requestNonce: string;
+  responseNonce?: string;
   payload: unknown;
   isError: boolean;
   raw: string | Record<string, unknown>;
@@ -62,6 +64,7 @@ export interface CreateCommandBusConfig {
   responseSuffix?: string;
   maxIncomingMessageBytes?: number;
   maxPendingRequests?: number;
+  responseTrustMode?: 'auto' | 'strict' | 'permissive';
   isTrustedResponse?: (info: TrustedResponseInfo) => boolean;
 }
 

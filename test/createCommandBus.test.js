@@ -104,6 +104,87 @@ test('request rejects untrusted responses through isTrustedResponse guard', asyn
   assert.equal(logs.some((entry) => String(entry[0]).includes('Dropped untrusted response')), true);
 });
 
+test('strict response trust mode rejects spoofed response missing nonce', async () => {
+  const logs = [];
+  let capturedRequest;
+
+  const bus = createCommandBus({
+    sendFn: (message) => {
+      capturedRequest = JSON.parse(message);
+    },
+    responseTrustMode: 'strict',
+    logger: { error: (...args) => logs.push(args) }
+  });
+
+  const pending = bus.request('secure', undefined, 25);
+  bus.receive(
+    JSON.stringify({
+      type: 'secure-response',
+      id: capturedRequest.id,
+      payload: { token: 'spoofed' }
+    })
+  );
+
+  await assert.rejects(() => pending, CommandBusTimeoutError);
+  assert.equal(logs.some((entry) => String(entry[0]).includes('invalid nonce')), true);
+});
+
+test('permissive response trust mode keeps compatibility with legacy responders', async () => {
+  let capturedRequest;
+  const bus = createCommandBus({
+    responseTrustMode: 'permissive',
+    sendFn: (message) => {
+      capturedRequest = JSON.parse(message);
+      bus.receive(
+        JSON.stringify({
+          type: 'legacy-response',
+          id: capturedRequest.id,
+          payload: { ok: true }
+        })
+      );
+    }
+  });
+
+  const response = await bus.request('legacy', undefined, 50);
+  assert.deepEqual(response, { ok: true });
+});
+
+test('request id generation falls back when crypto.randomUUID is unavailable', async () => {
+  const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  const originalCrypto = globalThis.crypto;
+  const fallbackCrypto = {
+    ...originalCrypto,
+    randomUUID: undefined,
+    getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto)
+  };
+
+  Object.defineProperty(globalThis, 'crypto', {
+    value: fallbackCrypto,
+    configurable: true
+  });
+
+  let capturedRequestId;
+  const bus = createCommandBus({
+    sendFn: (message) => {
+      capturedRequestId = JSON.parse(message).id;
+    }
+  });
+
+  try {
+    await assert.rejects(() => bus.request('id-check', undefined, 0), CommandBusTimeoutError);
+    assert.match(capturedRequestId, /^cmd-[0-9a-f]{32}-1$/);
+  } finally {
+    if (originalCryptoDescriptor) {
+      Object.defineProperty(globalThis, 'crypto', originalCryptoDescriptor);
+    } else {
+      Object.defineProperty(globalThis, 'crypto', {
+        value: originalCrypto,
+        configurable: true
+      });
+    }
+  }
+});
+
 test('validator is applied for send and receive paths', () => {
   const validator = {
     ping: (payload) => payload && payload.valid === true
@@ -205,6 +286,7 @@ test('constructor validates required config types', () => {
   assert.throws(() => createCommandBus({ sendFn: () => {}, responseSuffix: '' }), /responseSuffix/);
   assert.throws(() => createCommandBus({ sendFn: () => {}, maxIncomingMessageBytes: 0 }), /maxIncomingMessageBytes/);
   assert.throws(() => createCommandBus({ sendFn: () => {}, maxPendingRequests: 0 }), /maxPendingRequests/);
+  assert.throws(() => createCommandBus({ sendFn: () => {}, responseTrustMode: 'unknown' }), /responseTrustMode/);
   assert.throws(() => createCommandBus({ sendFn: () => {}, isTrustedResponse: 'nope' }), /isTrustedResponse/);
 });
 

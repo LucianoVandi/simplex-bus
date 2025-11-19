@@ -8,6 +8,9 @@ test('index.d.ts exports core API signatures (contract smoke)', () => {
   const requiredSignatures = [
     'export interface CreateCommandBusConfig',
     'isTrustedResponse?: (info: TrustedResponseInfo) => boolean;',
+    "responseTrustMode?: 'auto' | 'strict' | 'permissive';",
+    'requestNonce: string;',
+    'responseNonce?: string;',
     'maxIncomingMessageBytes?: number;',
     'maxPendingRequests?: number;',
     'details?: ValidationErrorDetails;',

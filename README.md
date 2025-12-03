@@ -168,6 +168,15 @@ Includes:
 - Public API contract tests (exports and method surface stability)
 - Type declaration contract checks (`npm run typecheck`, via `typescript`)
 
+Run benchmark smoke locally:
+
+```bash
+npm run benchmark:smoke
+```
+
+Baseline thresholds live in `fixtures/benchmarks/smoke-baseline.json`.
+In CI, benchmark smoke is reported as a non-blocking signal.
+
 Run local bridge demo:
 
 ```bash
@@ -211,6 +220,14 @@ Note on the E2E demo:
 - Failures are explicit through typed error classes.
 - Lifecycle is explicit and reversible (`on`, `once`, `off`, `dispose`).
 
+### Internal Architecture
+
+- `src/createCommandBus.js`: orchestration layer and public runtime behavior.
+- `src/internal/shared.js`: shared constants and low-level helpers.
+- `src/internal/config.js`: config validation and request options parsing.
+- `src/internal/pendingRequests.js`: pending request storage and lifecycle cleanup.
+- `src/createSchemaValidators.js`: schema-to-validator adapter with diagnostics.
+
 ### Message Model
 
 Envelope fields:
@@ -234,6 +251,14 @@ Envelope fields:
 - Runtime validation is intentionally lightweight and dependency-free.
 - Response type convention (`<type>-response`) is simple and predictable.
 - Handlers are sync-first for simplicity; async usage is supported at transport level.
+
+### Test Structure
+
+- `test/createCommandBus.request-response.test.js`: request, response, trust, timeout, and remote error behavior.
+- `test/createCommandBus.lifecycle.test.js`: `on/once/off/dispose` lifecycle semantics.
+- `test/createCommandBus.validation.test.js`: input validation, limits, and malformed input robustness.
+- `test/createSchemaValidators.test.js`: schema validator generation and diagnostics.
+- `test/publicApi.contract.test.js` and `test/types.contract.test.js`: export and typing contracts.
 
 ## Release Checklist
 

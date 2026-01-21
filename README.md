@@ -167,6 +167,7 @@ Includes:
 - Coverage thresholds (`line >= 90`, `branch >= 85`, `funcs >= 90`)
 - Public API contract tests (exports and method surface stability)
 - Type declaration contract checks (`npm run typecheck`, via `typescript`)
+- In CI, dependency audit is reported as a non-blocking signal (`npm run audit:high` + artifact upload)
 
 Run benchmark smoke locally:
 
@@ -225,7 +226,9 @@ Note on the E2E demo:
 - `src/createCommandBus.js`: orchestration layer and public runtime behavior.
 - `src/internal/shared.js`: shared constants and low-level helpers.
 - `src/internal/config.js`: config validation and request options parsing.
+- `src/internal/message.js`: payload and envelope validation/serialization helpers.
 - `src/internal/pendingRequests.js`: pending request storage and lifecycle cleanup.
+- `src/internal/requestId.js`: request ID generation strategy.
 - `src/createSchemaValidators.js`: schema-to-validator adapter with diagnostics.
 
 ### Message Model
@@ -245,6 +248,22 @@ Envelope fields:
 - Response correlation IDs are random UUID-based when available (with random fallback).
 - Strict response trust is automatic when `onReceive` is configured (`responseTrustMode: 'auto'`).
 - Optional `isTrustedResponse` guard can enforce provenance/channel checks in untrusted transports.
+
+### Response Trust: How It Works (and Why)
+
+- `responseTrustMode: 'auto'`: when `onReceive` is present, the bus requires nonce parity (`request.nonce === response.nonce`).
+  This is the safe default for cross-context transports.
+- `responseTrustMode: 'strict'`: always enforce nonce parity.
+  Use this when replay/spoof resistance is required.
+- `responseTrustMode: 'permissive'`: skip nonce parity checks.
+  Use only for legacy peers that cannot echo nonce yet.
+- `isTrustedResponse(info)`: custom gate executed before request resolution.
+  Use this to bind responses to origin/source/channel and reject untrusted candidates.
+
+Why this exists:
+- Correlation by `id` alone can be spoofed on untrusted transports.
+- Nonce parity and trust guards reduce false-positive response matches.
+- `permissive` keeps migration path for old integrations while defaults remain safer.
 
 ### Tradeoffs
 

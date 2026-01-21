@@ -3,7 +3,7 @@ import {
   createSchemaValidators,
   CommandBusLimitError,
   type CreateSchemaValidatorsConfig
-} from '../../index.js';
+} from '../../../index.js';
 
 const bus = createCommandBus({
   sendFn: (_message: string) => {},

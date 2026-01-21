@@ -1,25 +1,28 @@
 import {
   CommandBusAbortedError,
   CommandBusDisposedError,
-  CommandBusInvalidMessageError,
   CommandBusLimitError,
   CommandBusRemoteError,
-  CommandBusSerializationError,
   CommandBusValidationError,
   CommandBusTimeoutError
 } from './errors.js';
 import { parseRequestOptions, validateCreateConfig } from './internal/config.js';
+import {
+  createPayloadValidator,
+  normalizeIncomingMessage,
+  serializeEnvelope
+} from './internal/message.js';
 import { createPendingRequestsStore } from './internal/pendingRequests.js';
+import { createRequestIdGenerator } from './internal/requestId.js';
 import {
   DEFAULT_MAX_INCOMING_MESSAGE_BYTES,
   DEFAULT_MAX_PENDING_REQUESTS,
   DEFAULT_RESPONSE_SUFFIX,
   DEFAULT_RESPONSE_TRUST_MODE,
   NOOP_LOGGER,
-  getRandomHex,
   getStringSizeInBytes,
   isNonEmptyString,
-  isObject
+  getRandomHex
 } from './internal/shared.js';
 
 const NOOP_RESPONSE_TRUST_GUARD = () => true;
@@ -74,9 +77,10 @@ export function createCommandBus({
 
   const handlers = new Map();
   const pendingRequests = createPendingRequestsStore();
+  const validatePayload = createPayloadValidator(validators);
+  const generateId = createRequestIdGenerator();
   const allowAllTypes = allowedTypes.length === 0;
   const allowedTypeSet = new Set(allowedTypes);
-  let requestCounter = 0;
   let disposed = false;
   let unsubscribeReceive;
 
@@ -90,65 +94,10 @@ export function createCommandBus({
 
   const getResponseType = (type) => `${type}${responseSuffix}`;
 
-  const validatePayload = (type, payload) => {
-    const validator = validators[type];
-    if (!validator) {
-      return true;
-    }
-
-    if (typeof validator !== 'function') {
-      throw new CommandBusValidationError(`Validator for type "${type}" is not a function.`);
-    }
-
-    try {
-      if (!validator(payload)) {
-        throw new CommandBusValidationError(`Invalid payload for type "${type}".`);
-      }
-      return true;
-    } catch (error) {
-      if (error instanceof CommandBusValidationError) {
-        throw error;
-      }
-      throw new CommandBusValidationError(`Validator failed for type "${type}".`, { cause: error });
-    }
-  };
-
-  const generateId = () => {
-    requestCounter += 1;
-
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      return `cmd-${crypto.randomUUID()}`;
-    }
-
-    return `cmd-${getRandomHex(16)}-${requestCounter}`;
-  };
-
   const safeLogError = (...args) => {
     if (logger && typeof logger.error === 'function') {
       logger.error(...args);
     }
-  };
-
-  const normalizeMessage = (raw) => {
-    const parsed = typeof raw === 'string' ? parser(raw) : raw;
-
-    if (!isObject(parsed)) {
-      throw new CommandBusInvalidMessageError('Incoming message must be an object.');
-    }
-
-    if (!isNonEmptyString(parsed.type)) {
-      throw new CommandBusInvalidMessageError('Incoming message must include a non-empty string `type`.');
-    }
-
-    if (parsed.id !== undefined && !isNonEmptyString(parsed.id)) {
-      throw new CommandBusInvalidMessageError('Incoming message `id` must be a non-empty string when provided.');
-    }
-
-    if (parsed.nonce !== undefined && !isNonEmptyString(parsed.nonce)) {
-      throw new CommandBusInvalidMessageError('Incoming message `nonce` must be a non-empty string when provided.');
-    }
-
-    return parsed;
   };
 
   const sendEnvelope = (message, { skipTypeGuard = false } = {}) => {
@@ -160,15 +109,7 @@ export function createCommandBus({
 
     validatePayload(message.type, message.payload);
 
-    let serialized;
-    try {
-      serialized = serializer(message);
-    } catch (error) {
-      throw new CommandBusSerializationError(`Failed to serialize message type "${message.type}".`, {
-        cause: error
-      });
-    }
-
+    const serialized = serializeEnvelope(serializer, message.type, message);
     sendFn(serialized);
   };
 
@@ -287,7 +228,7 @@ export function createCommandBus({
 
     let message;
     try {
-      message = normalizeMessage(raw);
+      message = normalizeIncomingMessage(raw, parser);
     } catch (error) {
       safeLogError('[SimplexBus] Invalid incoming message', error);
       return;

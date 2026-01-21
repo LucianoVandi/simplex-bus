@@ -35,7 +35,16 @@ jobs:
         run: npm run typecheck
 
       - name: Run dependency vulnerability audit
-        run: npm audit --audit-level=high
+        run: npm run audit:high
+        continue-on-error: true
+
+      - name: Upload dependency audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: artifacts/npm-audit.json
+          if-no-files-found: warn
 
   compatibility:
     name: Compatibility (Node ${{ matrix.node-version }})

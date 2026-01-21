@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.typecheck.json",
+  "include": [
+    "fixtures/types/fail/**/*.ts"
+  ]
+}

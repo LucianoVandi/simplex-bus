@@ -9,6 +9,6 @@
     "types": []
   },
   "include": [
-    "fixtures/types/**/*.ts"
+    "fixtures/types/pass/**/*.ts"
   ]
 }

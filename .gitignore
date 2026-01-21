@@ -4,3 +4,4 @@ node_modules/
 dist/
 .npm-cache/
 *.tgz
+artifacts/

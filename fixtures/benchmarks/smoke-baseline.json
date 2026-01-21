@@ -1,4 +1,5 @@
 {
   "send_loopback_ops_per_sec": 10000,
-  "request_response_ops_per_sec": 500
+  "request_response_ops_per_sec": 500,
+  "dispatch_with_validation_ops_per_sec": 5000
 }

@@ -1,5 +1,9 @@
 # Simplex Bus
 
+[![CI](https://github.com/LucianoVandi/simplex-bus/actions/workflows/ci.yml/badge.svg)](https://github.com/LucianoVandi/simplex-bus/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@lucianovandi/simplex-bus)](https://www.npmjs.com/package/@lucianovandi/simplex-bus)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A transport-agnostic command bus for safe cross-context messaging (`WebView`, `iframe`, embedded apps, native bridges).
 
 `Simplex Bus` focuses on:
@@ -196,15 +200,6 @@ npm run demo:e2e:ajv
 ```
 If Ajv is not installed locally, run `npm install --save-dev ajv` first.
 
-## Repository Standards
-
-This repository includes:
-- CI pipeline (`.github/workflows/ci.yml`)
-- Contribution guide (`CONTRIBUTING.md`)
-- Security policy (`SECURITY.md`)
-- Code of Conduct (`CODE_OF_CONDUCT.md`)
-- Changelog (`CHANGELOG.md`)
-
 ## Examples
 
 - WebView bridge example: `examples/webview-bridge.js`
@@ -283,30 +278,6 @@ Why this exists:
 - `test/createCommandBus.validation.test.js`: input validation, limits, and malformed input robustness.
 - `test/createSchemaValidators.test.js`: schema validator generation and diagnostics.
 - `test/publicApi.contract.test.js` and `test/types.contract.test.js`: export and typing contracts.
-
-## Release Checklist
-
-### Before Release
-
-- Run `npm run check` and ensure all gates pass.
-- Verify `CHANGELOG.md` has an entry for the release.
-- Verify README examples still match the public API.
-- Verify package contents with `npm run pack:check`.
-
-### Versioning
-
-- Bump version in `package.json`.
-- Tag release with `v<version>`.
-
-### Publish
-
-- Publish package from clean `main` branch.
-- Create GitHub release notes from changelog.
-
-### After Release
-
-- Smoke test install from a fresh project.
-- Open follow-up issues for deferred improvements.
 
 ## License
 

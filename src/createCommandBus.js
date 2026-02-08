@@ -31,7 +31,7 @@ const NOOP_RESPONSE_TRUST_GUARD = () => true;
  * @param {Record<string, (payload: unknown) => boolean>} [config.validators]
  * @param {(raw: string) => object} [config.parser]
  * @param {(message: object) => string} [config.serializer]
- * @param {{ error?: (...args: unknown[]) => void }} [config.logger]
+ * @param {{ error?: (...args: unknown[]) => void, warn?: (...args: unknown[]) => void, info?: (...args: unknown[]) => void, debug?: (...args: unknown[]) => void }} [config.logger]
  * @param {string} [config.responseSuffix]
  * @param {number} [config.maxIncomingMessageBytes]
  * @param {number} [config.maxPendingRequests]

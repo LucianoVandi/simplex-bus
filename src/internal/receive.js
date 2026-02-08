@@ -21,6 +21,113 @@ export const createReceive = ({
   handlers,
   sendResponse
 }) => {
+  const getPendingFromMessage = (message) => (message.id ? pendingRequests.get(message.id) : undefined);
+
+  const tryNormalizeMessage = (raw) => {
+    try {
+      return normalizeIncomingMessage(raw, parser);
+    } catch (error) {
+      safeLogError('[SimplexBus] Invalid incoming message', error);
+      return undefined;
+    }
+  };
+
+  const isOversizedIncomingString = (raw) =>
+    typeof raw === 'string' && getStringSizeInBytes(raw) > maxIncomingMessageBytes;
+
+  const isTrustedPendingResponse = ({ message, pending, raw }) => {
+    let trustedResponse;
+    try {
+      trustedResponse = isTrustedResponse({
+        requestType: pending.type,
+        requestId: message.id,
+        responseType: message.type,
+        requestNonce: pending.nonce,
+        responseNonce: message.nonce,
+        payload: message.payload,
+        isError: message.isError === true,
+        raw
+      });
+    } catch (error) {
+      safeLogError('[SimplexBus] Trusted response guard failed', error);
+      return false;
+    }
+
+    if (!trustedResponse) {
+      safeLogError('[SimplexBus] Dropped untrusted response', {
+        requestType: pending.type,
+        requestId: message.id,
+        responseType: message.type
+      });
+      return false;
+    }
+
+    if (isStrictResponseTrust && message.nonce !== pending.nonce) {
+      safeLogError('[SimplexBus] Dropped response with invalid nonce', {
+        requestType: pending.type,
+        requestId: message.id,
+        responseType: message.type
+      });
+      return false;
+    }
+
+    return true;
+  };
+
+  const settlePendingResponse = ({ message, pending }) => {
+    try {
+      validatePayload(message.type, message.payload);
+    } catch (error) {
+      pendingRequests.clear(message.id);
+      pending.reject(error);
+      return true;
+    }
+
+    pendingRequests.clear(message.id);
+    if (message.isError) {
+      pending.reject(new CommandBusRemoteError(pending.type, message.payload));
+    } else {
+      pending.resolve(message.payload);
+    }
+
+    return true;
+  };
+
+  const validateIncomingCommandPayload = (message) => {
+    try {
+      validatePayload(message.type, message.payload);
+      return true;
+    } catch (error) {
+      safeLogError('[SimplexBus] Invalid incoming payload', error);
+      return false;
+    }
+  };
+
+  const createListenerContext = (message) => ({
+    respond: (responsePayload) => sendResponse({ message, payload: responsePayload, isError: false }),
+    respondError: (responsePayload) => sendResponse({ message, payload: responsePayload, isError: true })
+  });
+
+  const runListener = ({ listener, message, context }) => {
+    try {
+      const result = listener(message.payload, context);
+      if (isPromiseLike(result)) {
+        result.catch((error) => {
+          handleListenerFailure(message, error);
+        });
+      }
+    } catch (error) {
+      handleListenerFailure(message, error);
+    }
+  };
+
+  const dispatchToListeners = (message, listeners) => {
+    const context = createListenerContext(message);
+    for (const listener of listeners) {
+      runListener({ listener, message, context });
+    }
+  };
+
   const handleListenerFailure = (message, error) => {
     safeLogError(`[SimplexBus] Handler failed for type "${message.type}"`, error);
 
@@ -44,72 +151,24 @@ export const createReceive = ({
       return;
     }
 
-    if (typeof raw === 'string' && getStringSizeInBytes(raw) > maxIncomingMessageBytes) {
+    if (isOversizedIncomingString(raw)) {
       safeLogError(
         `[SimplexBus] Incoming message exceeds maxIncomingMessageBytes (${maxIncomingMessageBytes}).`
       );
       return;
     }
 
-    let message;
-    try {
-      message = normalizeIncomingMessage(raw, parser);
-    } catch (error) {
-      safeLogError('[SimplexBus] Invalid incoming message', error);
+    const message = tryNormalizeMessage(raw);
+    if (!message) {
       return;
     }
 
-    const pending = message.id ? pendingRequests.get(message.id) : undefined;
+    const pending = getPendingFromMessage(message);
     if (pending && message.type === pending.expectedResponseType) {
-      let trustedResponse;
-      try {
-        trustedResponse = isTrustedResponse({
-          requestType: pending.type,
-          requestId: message.id,
-          responseType: message.type,
-          requestNonce: pending.nonce,
-          responseNonce: message.nonce,
-          payload: message.payload,
-          isError: message.isError === true,
-          raw
-        });
-      } catch (error) {
-        safeLogError('[SimplexBus] Trusted response guard failed', error);
+      if (!isTrustedPendingResponse({ message, pending, raw })) {
         return;
       }
-
-      if (!trustedResponse) {
-        safeLogError('[SimplexBus] Dropped untrusted response', {
-          requestType: pending.type,
-          requestId: message.id,
-          responseType: message.type
-        });
-        return;
-      }
-
-      if (isStrictResponseTrust && message.nonce !== pending.nonce) {
-        safeLogError('[SimplexBus] Dropped response with invalid nonce', {
-          requestType: pending.type,
-          requestId: message.id,
-          responseType: message.type
-        });
-        return;
-      }
-
-      try {
-        validatePayload(message.type, message.payload);
-      } catch (error) {
-        pendingRequests.clear(message.id);
-        pending.reject(error);
-        return;
-      }
-
-      pendingRequests.clear(message.id);
-      if (message.isError) {
-        pending.reject(new CommandBusRemoteError(pending.type, message.payload));
-      } else {
-        pending.resolve(message.payload);
-      }
+      settlePendingResponse({ message, pending });
       return;
     }
 
@@ -117,10 +176,7 @@ export const createReceive = ({
       return;
     }
 
-    try {
-      validatePayload(message.type, message.payload);
-    } catch (error) {
-      safeLogError('[SimplexBus] Invalid incoming payload', error);
+    if (!validateIncomingCommandPayload(message)) {
       return;
     }
 
@@ -129,22 +185,6 @@ export const createReceive = ({
       return;
     }
 
-    const context = {
-      respond: (responsePayload) => sendResponse({ message, payload: responsePayload, isError: false }),
-      respondError: (responsePayload) => sendResponse({ message, payload: responsePayload, isError: true })
-    };
-
-    for (const listener of listeners) {
-      try {
-        const result = listener(message.payload, context);
-        if (isPromiseLike(result)) {
-          result.catch((error) => {
-            handleListenerFailure(message, error);
-          });
-        }
-      } catch (error) {
-        handleListenerFailure(message, error);
-      }
-    }
+    dispatchToListeners(message, listeners);
   };
 };

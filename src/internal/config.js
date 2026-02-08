@@ -1,4 +1,5 @@
 import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
   RESPONSE_TRUST_MODES,
   isNonEmptyString,
   isObject
@@ -6,14 +7,14 @@ import {
 
 export const parseRequestOptions = (optionsOrTimeout) => {
   if (typeof optionsOrTimeout === 'number' || optionsOrTimeout === undefined) {
-    return { timeout: optionsOrTimeout ?? 5000, signal: undefined };
+    return { timeout: optionsOrTimeout ?? DEFAULT_REQUEST_TIMEOUT_MS, signal: undefined };
   }
 
   if (!isObject(optionsOrTimeout)) {
     throw new TypeError('Request options must be a number or an object.');
   }
 
-  const timeout = optionsOrTimeout.timeout ?? 5000;
+  const timeout = optionsOrTimeout.timeout ?? DEFAULT_REQUEST_TIMEOUT_MS;
   return {
     timeout,
     signal: optionsOrTimeout.signal

@@ -271,6 +271,13 @@ Why this exists:
 - Response type convention (`<type>-response`) is simple and predictable.
 - Handler failures are normalized across sync/async paths to reduce unhandled rejection risk.
 
+### Concurrency Semantics
+
+- Listeners for the same message type are triggered independently in registration order.
+- Async listeners are not awaited by `receive()`, so one slow handler does not block others.
+- `once(type, handler)` removes the wrapper before handler execution to prevent duplicate runs.
+- Promise rejections from async listeners are logged and, for request messages, mapped to error responses.
+
 ### Test Structure
 
 - `test/createCommandBus.request-response.test.js`: request, response, trust, timeout, and remote error behavior.

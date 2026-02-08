@@ -151,7 +151,7 @@ test('request id generation falls back when crypto.randomUUID is unavailable', a
 
   try {
     await assert.rejects(() => bus.request('id-check', undefined, 0), CommandBusTimeoutError);
-    assert.match(capturedRequestId, /^cmd-[0-9a-f]{32}-1$/);
+    assert.match(capturedRequestId, /^cmd-[0-9a-f]{32}$/);
   } finally {
     if (originalCryptoDescriptor) {
       Object.defineProperty(globalThis, 'crypto', originalCryptoDescriptor);

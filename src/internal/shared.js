@@ -1,8 +1,12 @@
 export const NOOP_LOGGER = {
-  error: () => {}
+  error: () => {},
+  warn: () => {},
+  info: () => {},
+  debug: () => {}
 };
 
 export const DEFAULT_RESPONSE_SUFFIX = '-response';
+export const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 export const DEFAULT_MAX_INCOMING_MESSAGE_BYTES = 64 * 1024;
 export const DEFAULT_MAX_PENDING_REQUESTS = 500;
 export const DEFAULT_RESPONSE_TRUST_MODE = 'auto';

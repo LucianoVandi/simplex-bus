@@ -41,7 +41,7 @@ const validators = createSchemaValidators({
 
 const bus = createCommandBus({
   sendFn: (message) => {
-    // transport implementation omitted
+    // Demo only: transport implementation omitted.
     console.log('SEND', message);
   },
   validators,

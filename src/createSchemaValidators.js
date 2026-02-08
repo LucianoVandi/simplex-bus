@@ -1,8 +1,5 @@
 import { CommandBusValidationError } from './errors.js';
-
-const DEFAULT_RESPONSE_SUFFIX = '-response';
-
-const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+import { DEFAULT_RESPONSE_SUFFIX, isObject } from './internal/shared.js';
 
 /**
  * Builds validator handlers for createCommandBus.validators from JSON Schemas.

@@ -172,6 +172,35 @@ test('async handler rejections are logged and converted to error responses', asy
   assert.equal(logs.length > 0, true);
 });
 
+test('async listeners execute independently without blocking other listeners', async () => {
+  const events = [];
+  let releaseSlowListener;
+  const slowListenerDone = new Promise((resolve) => {
+    releaseSlowListener = resolve;
+  });
+
+  const bus = createCommandBus({
+    sendFn: (message) => bus.receive(message),
+    logger: { error: () => {} }
+  });
+
+  bus.on('parallel', async () => {
+    events.push('slow:start');
+    await slowListenerDone;
+    events.push('slow:end');
+  });
+  bus.on('parallel', () => {
+    events.push('fast');
+  });
+
+  bus.send('parallel');
+  assert.deepEqual(events, ['slow:start', 'fast']);
+
+  releaseSlowListener();
+  await Promise.resolve();
+  assert.deepEqual(events, ['slow:start', 'fast', 'slow:end']);
+});
+
 test('handler registration fails when type is not in allowedTypes', () => {
   const bus = createCommandBus({
     sendFn: () => {},

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   CommandBusAbortedError,
+  CommandBusSerializationError,
   CommandBusRemoteError,
   CommandBusTimeoutError,
   createCommandBus
@@ -174,4 +175,28 @@ test('remote errors are propagated as CommandBusRemoteError', async () => {
     () => busA.request('save', { id: 1 }, 100),
     (error) => error instanceof CommandBusRemoteError && error.payload.code === 'E_SAVE'
   );
+});
+
+test('request rejects when sendFn fails during envelope dispatch', async () => {
+  const bus = createCommandBus({
+    sendFn: () => {
+      throw new Error('transport down');
+    }
+  });
+
+  await assert.rejects(
+    () => bus.request('send-fail', { ok: true }, 100),
+    (error) => error instanceof Error && error.message === 'transport down'
+  );
+});
+
+test('request rejects when serializer fails during envelope dispatch', async () => {
+  const bus = createCommandBus({
+    serializer: () => {
+      throw new Error('cannot serialize');
+    },
+    sendFn: () => {}
+  });
+
+  await assert.rejects(() => bus.request('serialize-fail', { ok: true }, 100), CommandBusSerializationError);
 });

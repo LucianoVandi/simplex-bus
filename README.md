@@ -72,6 +72,11 @@ Handler context:
 - `respond(payload)`
 - `respondError(payload)`
 
+Handler execution:
+- Handlers can be synchronous or asynchronous (`async` / Promise-returning).
+- If a handler throws or rejects for a request message (`id` present), the bus attempts to send `respondError({ message })`.
+- If the error response cannot be sent, the failure is logged through `logger.error`.
+
 ## Errors
 
 Exports:
@@ -269,7 +274,7 @@ Why this exists:
 
 - Runtime validation is intentionally lightweight and dependency-free.
 - Response type convention (`<type>-response`) is simple and predictable.
-- Handlers are sync-first for simplicity; async usage is supported at transport level.
+- Handler failures are normalized across sync/async paths to reduce unhandled rejection risk.
 
 ### Test Structure
 

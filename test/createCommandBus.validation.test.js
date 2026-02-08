@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   CommandBusRemoteError,
+  CommandBusTimeoutError,
   CommandBusInvalidMessageError,
   CommandBusLimitError,
   CommandBusSerializationError,
@@ -27,8 +28,9 @@ test('validator is applied for send and receive paths', () => {
   const seen = [];
   bus.on('ping', (payload) => seen.push(payload));
   bus.receive(JSON.stringify({ type: 'ping', payload: { valid: false } }));
+  bus.send('ping', { valid: true });
 
-  assert.deepEqual(seen, []);
+  assert.deepEqual(seen, [{ valid: true }]);
 });
 
 test('constructor validates required config types', () => {
@@ -64,6 +66,7 @@ test('request validates type, timeout and signal', async () => {
   const bus = createCommandBus({ sendFn: () => {} });
   assert.throws(() => bus.request('x', undefined, -1), /timeout/);
   assert.throws(() => bus.request('', undefined, 1), /type/);
+  assert.throws(() => bus.request('x', undefined, 'not-valid-options'), /number or an object/);
   assert.throws(() => bus.request('x', undefined, { signal: {} }), /AbortSignal/);
 });
 
@@ -115,6 +118,24 @@ test('validators must be functions when used', () => {
   assert.throws(() => bus.send('x', {}), CommandBusValidationError);
 });
 
+test('validator failures are wrapped when validator throws', () => {
+  const bus = createCommandBus({
+    sendFn: () => {},
+    validators: {
+      explode: () => {
+        throw new Error('validator crash');
+      }
+    }
+  });
+
+  assert.throws(
+    () => bus.send('explode', {}),
+    (error) =>
+      error instanceof CommandBusValidationError &&
+      error.message.includes('Validator failed for type "explode"')
+  );
+});
+
 test('handler exceptions are logged and converted to error responses', async () => {
   const logs = [];
   const { busA, busB } = createLinkedBuses(
@@ -133,9 +154,82 @@ test('handler exceptions are logged and converted to error responses', async () 
   assert.equal(logs.length > 0, true);
 });
 
+test('async handler rejections are logged and converted to error responses', async () => {
+  const logs = [];
+  const { busA, busB } = createLinkedBuses(
+    {},
+    { logger: { error: (...args) => logs.push(args) } }
+  );
+
+  busB.on('explode-async', async () => {
+    throw new Error('async boom');
+  });
+
+  await assert.rejects(
+    () => busA.request('explode-async', undefined, 100),
+    (error) => error instanceof CommandBusRemoteError && error.payload.message === 'async boom'
+  );
+  assert.equal(logs.length > 0, true);
+});
+
+test('handler registration fails when type is not in allowedTypes', () => {
+  const bus = createCommandBus({
+    sendFn: () => {},
+    allowedTypes: ['allowed']
+  });
+
+  assert.throws(() => bus.on('blocked', () => {}), CommandBusValidationError);
+});
+
+test('context.respond returns false when incoming message has no request id', () => {
+  const bus = createCommandBus({
+    sendFn: (message) => bus.receive(message)
+  });
+
+  let responded = true;
+  bus.on('ping', (_, context) => {
+    responded = context.respond({ ok: true });
+  });
+
+  bus.send('ping');
+  assert.equal(responded, false);
+});
+
+test('failed handler error-response send is logged and requester times out', async () => {
+  const logs = [];
+  const { busA, busB } = createLinkedBuses(
+    {},
+    {
+      logger: { error: (...args) => logs.push(args) },
+      validators: {
+        'explode-response': () => false
+      }
+    }
+  );
+
+  busB.on('explode', () => {
+    throw new Error('boom');
+  });
+
+  await assert.rejects(() => busA.request('explode', undefined, 25), CommandBusTimeoutError);
+  assert.equal(logs.some((entry) => String(entry[0]).includes('Failed to send handler error response')), true);
+});
+
 test('CommandBusInvalidMessageError can be created explicitly', () => {
   const error = new CommandBusInvalidMessageError('bad');
   assert.equal(error.message, 'bad');
+});
+
+test('invalid nonce in incoming message is reported to logger', () => {
+  const logs = [];
+  const bus = createCommandBus({
+    sendFn: () => {},
+    logger: { error: (...args) => logs.push(args) }
+  });
+
+  bus.receive(JSON.stringify({ type: 'x', nonce: '' }));
+  assert.equal(logs.length, 1);
+  assert.ok(logs[0][1] instanceof Error);
 });
 
 test('maxIncomingMessageBytes drops oversized messages', () => {
@@ -188,6 +282,21 @@ test('maxPendingRequests protects from unbounded pending growth', async () => {
   await assert.rejects(() => pending, CommandBusDisposedError);
 });
 
+test('receive is a no-op after dispose', () => {
+  const bus = createCommandBus({
+    sendFn: (message) => bus.receive(message)
+  });
+
+  let called = 0;
+  bus.on('x', () => {
+    called += 1;
+  });
+
+  bus.dispose();
+  bus.receive(JSON.stringify({ type: 'x', payload: 1 }));
+  assert.equal(called, 0);
+});
+
 test('receive is robust against malformed random inputs (fuzz smoke)', () => {
   const bus = createCommandBus({
     sendFn: () => {},
@@ -218,4 +327,24 @@ test('receive is robust against malformed random inputs (fuzz smoke)', () => {
     const value = randomValues[i % randomValues.length];
     assert.doesNotThrow(() => bus.receive(value));
   }
+});
+
+test('handler error for non-request message is logged without sending an error response', () => {
+  const logs = [];
+  let sent = 0;
+  const bus = createCommandBus({
+    logger: { error: (...args) => logs.push(args) },
+    sendFn: () => {
+      sent += 1;
+    }
+  });
+
+  bus.on('explode', () => {
+    throw new Error('no-request boom');
+  });
+
+  bus.receive(JSON.stringify({ type: 'explode', payload: { ok: false } }));
+  assert.equal(sent, 0);
+  assert.equal(logs.length, 1);
+  assert.equal(String(logs[0][0]).includes('Handler failed for type "explode"'), true);
 });

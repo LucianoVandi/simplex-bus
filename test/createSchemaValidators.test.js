@@ -50,6 +50,10 @@ test('createSchemaValidators validates config', () => {
     () => createSchemaValidators({ schemaMap: {}, compile: () => () => true, onValidationError: 1 }),
     /onValidationError/
   );
+  assert.throws(
+    () => createSchemaValidators({ schemaMap: {}, compile: () => () => true, responseSuffix: '' }),
+    /responseSuffix/
+  );
 });
 
 test('createSchemaValidators surfaces validation diagnostics', () => {
@@ -80,4 +84,30 @@ test('createSchemaValidators surfaces validation diagnostics', () => {
   );
   assert.equal(diagnostics.length, 1);
   assert.equal(diagnostics[0].channel, 'response');
+});
+
+test('createSchemaValidators rejects invalid schema entries and invalid compiler output', () => {
+  assert.throws(
+    () =>
+      createSchemaValidators({
+        compile: () => () => true,
+        schemaMap: {
+          x: null
+        }
+      }),
+    /must be an object/
+  );
+
+  assert.throws(
+    () =>
+      createSchemaValidators({
+        compile: () => 1,
+        schemaMap: {
+          x: {
+            request: { type: 'string' }
+          }
+        }
+      }),
+    /must be a function/
+  );
 });

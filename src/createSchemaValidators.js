@@ -111,9 +111,7 @@ export function createSchemaValidators({
           }
         }
 
-        throw errorFailure || responseFailure || new CommandBusValidationError(
-          `Schema validation failed for type "${type}" on response.`
-        );
+        throw errorFailure || responseFailure;
       };
     }
   }

@@ -24,7 +24,7 @@
     "demo:e2e:ajv": "node examples/e2e/local-bridge-demo-ajv.mjs",
     "benchmark:smoke": "node scripts/benchmark-smoke.mjs",
     "pack:check": "npm pack --dry-run --cache ./.npm-cache",
-    "check": "npm run lint && npm run test && npm run check:coverage && npm run pack:check"
+    "check": "npm run lint && npm run test && npm run check:coverage && npm run typecheck && npm run pack:check"
   },
   "repository": {
     "type": "git",

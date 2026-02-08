@@ -49,7 +49,7 @@ export interface CommandContext<TResponse = unknown, TError = unknown> {
 export type CommandHandler<TPayload = unknown, TResponse = unknown, TError = unknown> = (
   payload: TPayload,
   context: CommandContext<TResponse, TError>
-) => void;
+) => void | Promise<void>;
 
 export interface CreateCommandBusConfig {
   sendFn: (message: string) => void;

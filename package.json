@@ -49,7 +49,7 @@
   },
   "devDependencies": {
     "ajv": "^8.17.1",
-    "eslint": "^10.0.0",
+    "eslint": "^10.0.3",
     "typescript": "^5.9.3"
   }
 }

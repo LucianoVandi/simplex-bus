@@ -16,6 +16,8 @@ import {
   DEFAULT_RESPONSE_SUFFIX,
   DEFAULT_RESPONSE_TRUST_MODE,
   NOOP_LOGGER,
+  getCsprng,
+  CsprngUnavailableError,
   isNonEmptyString
 } from './internal/shared.js';
 
@@ -68,6 +70,21 @@ export function createCommandBus({
 
   const isStrictResponseTrust =
     responseTrustMode === 'strict' || (responseTrustMode === 'auto' && typeof onReceive === 'function');
+
+  if (isStrictResponseTrust) {
+    try {
+      getCsprng({ requireSecure: true });
+    } catch (err) {
+      if (err instanceof CsprngUnavailableError) {
+        const error = new CsprngUnavailableError(
+          `Cannot create CommandBus with strict/auto trust mode: CSPRNG is not available. Use responseTrustMode: "permissive" if this environment lacks crypto.getRandomValues.`
+        );
+        error.cause = err;
+        throw error;
+      }
+      throw err;
+    }
+  }
 
   const pendingRequests = createPendingRequestsStore();
   const validatePayload = createPayloadValidator(validators);

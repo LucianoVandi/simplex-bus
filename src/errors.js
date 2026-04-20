@@ -44,3 +44,5 @@ export class CommandBusRemoteError extends CommandBusError {
 }
 
 export class CommandBusLimitError extends CommandBusError {}
+
+export { CsprngUnavailableError } from './internal/shared.js';

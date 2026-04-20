@@ -9,5 +9,6 @@ export {
   CommandBusTimeoutError,
   CommandBusAbortedError,
   CommandBusRemoteError,
-  CommandBusLimitError
+  CommandBusLimitError,
+  CsprngUnavailableError
 } from './src/errors.js';
